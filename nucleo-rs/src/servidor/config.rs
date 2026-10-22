@@ -87,7 +87,7 @@ pub fn cargar(ruta_env: &str) -> Config {
     let rvd = get("RVD_SCHEDULER_ACTIVO", "true");
     let mut c = Config {
         app_name: get("APP_NAME", "DTE Chile API"),
-        app_version: get("APP_VERSION", "1.1.0"),
+        app_version: get("APP_VERSION", "1.2.0"),
         database_path: get("DATABASE_URL", "sqlite:///./dte_database.db")
             .trim_start_matches("sqlite:///")
             .to_string(),

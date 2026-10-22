@@ -83,7 +83,7 @@ func CargarConfig(rutaEnv string) (*Config, error) {
 		return def
 	}
 	c := &Config{
-		AppName: get("APP_NAME", "DTE Chile API"), AppVersion: get("APP_VERSION", "1.1.0"),
+		AppName: get("APP_NAME", "DTE Chile API"), AppVersion: get("APP_VERSION", "1.2.0"),
 		DatabasePath:          strings.TrimPrefix(get("DATABASE_URL", "sqlite:///./dte_database.db"), "sqlite:///"),
 		StoragePath:           get("STORAGE_PATH", "./storage"),
 		JWTSecret:             get("JWT_SECRET_KEY", ""),

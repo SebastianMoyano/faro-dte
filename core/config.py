@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     # ---- Servidor ----
     app_name: str = Field(default="DTE Chile API", description="Nombre de la aplicación")
-    app_version: str = Field(default="1.1.0", description="Versión de la aplicación")
+    app_version: str = Field(default="1.2.0", description="Versión de la aplicación")
     host: str = Field(default="0.0.0.0", description="Host del servidor")
     port: int = Field(default=8000, description="Puerto del servidor")
     debug: bool = Field(default=False, description="Modo debug")

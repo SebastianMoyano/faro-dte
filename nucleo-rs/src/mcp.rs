@@ -12,7 +12,7 @@ use serde_json::{json, Map, Value};
 use std::io::{BufRead, Write};
 use std::sync::Arc;
 
-pub const VERSION: &str = "1.1.0";
+pub const VERSION: &str = "1.2.0";
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
 const VERSIONES_SOPORTADAS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 

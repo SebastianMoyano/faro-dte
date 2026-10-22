@@ -23,7 +23,7 @@ import (
 )
 
 // Version del servidor MCP (serverInfo.version).
-const Version = "1.1.0"
+const Version = "1.2.0"
 
 // Instrucciones que el servidor entrega al cliente en initialize.
 var Instrucciones = "Motor de facturación electrónica DTE para el SII de Chile. Usa estas " +
