@@ -26,6 +26,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"dtechile/nucleo/salaespera"
 )
 
 const (
@@ -90,6 +92,7 @@ func Nuevo(rutUsuario, claveTributaria, claveCertificado string) (*Cliente, erro
 		claveTrib: claveTributaria, claveCert: claveCertificado, jar: jar,
 	}
 	c.http = &http.Client{
+		Transport:     salaespera.Transporte(nil),
 		Jar:           jar,
 		Timeout:       c.Timeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -391,7 +394,7 @@ func (c *Cliente) Cerrar() error {
 		return nil
 	}
 	c.autenticado = false
-	cli := &http.Client{Jar: c.jar, Timeout: 20 * time.Second}
+	cli := &http.Client{Transport: salaespera.Transporte(nil), Jar: c.jar, Timeout: 20 * time.Second}
 	req, err := http.NewRequest("GET", urlLogout, nil)
 	if err != nil {
 		return nil

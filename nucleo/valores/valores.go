@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"dtechile/nucleo/salaespera"
 )
 
 // Valor es un indicador en una fecha. Valor en pesos (UF, UTM, dólar observado).
@@ -156,7 +158,7 @@ func bajar(url string) ([]byte, error) {
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("User-Agent", uaNavegador)
 	req.Header.Set("Accept-Language", "es-CL,es;q=0.9")
-	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
+	resp, err := (&http.Client{Transport: salaespera.Transporte(nil), Timeout: 20 * time.Second}).Do(req)
 	if err != nil {
 		return nil, err
 	}

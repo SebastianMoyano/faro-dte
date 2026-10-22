@@ -17,6 +17,41 @@ pub fn agente(timeout: Duration, redirigir: bool) -> ureq::Agent {
     config.into()
 }
 
+/// Lo que se le dice a la persona cuando el SII la mandó a su sala de espera (Queue-it). El mismo
+/// texto en los tres motores (`core/sala_espera.py`, `nucleo/salaespera`).
+pub const MENSAJE_SALA_ESPERA: &str = "El SII tiene una fila de espera en este servicio (sala de espera): intenta de nuevo en unos minutos.";
+
+/// ¿La URL es de la sala de espera del SII? `salaespera.sii.cl` o cualquier `*.queue-it.net`
+/// (docs/SII-ENDPOINTS.md §5). Una ruta relativa nunca lo es.
+pub fn es_sala_espera(url: &str) -> bool {
+    let resto = match url.find("://") {
+        Some(i) => &url[i + 3..],
+        None => match url.strip_prefix("//") {
+            Some(r) => r,
+            None => return false,
+        },
+    };
+    let fin = resto.find(['/', '?', '#']).unwrap_or(resto.len());
+    let autoridad = &resto[..fin];
+    let autoridad = autoridad.rsplit('@').next().unwrap_or(autoridad);
+    let host = autoridad.split(':').next().unwrap_or("").to_ascii_lowercase();
+    host == "salaespera.sii.cl" || host == "queue-it.net" || host.ends_with(".queue-it.net")
+}
+
+/// Corta si la respuesta terminó en la sala de espera (siguiendo redirecciones) o apunta a ella
+/// con `Location` (agente sin redirecciones): el HTML de la fila no se parsea como si fuera el SII.
+fn revisar_sala_espera(r: &ureq::http::Response<ureq::Body>) -> Result<(), String> {
+    use ureq::ResponseExt;
+    let destino = r
+        .headers()
+        .get("location")
+        .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned());
+    if es_sala_espera(&r.get_uri().to_string()) || destino.is_some_and(|d| es_sala_espera(&d)) {
+        return Err(MENSAJE_SALA_ESPERA.to_string());
+    }
+    Ok(())
+}
+
 /// Respuesta HTTP ya leída.
 pub struct Respuesta {
     pub status: u16,
@@ -43,6 +78,7 @@ pub fn ejecutar(
     cuerpo: &[u8],
 ) -> Result<Respuesta, String> {
     let mut r = req.send(cuerpo).map_err(|e| e.to_string())?;
+    revisar_sala_espera(&r)?;
     let status = r.status().as_u16();
     let headers = r
         .headers()
@@ -71,6 +107,7 @@ pub fn ejecutar_get(
     req: ureq::RequestBuilder<ureq::typestate::WithoutBody>,
 ) -> Result<Respuesta, String> {
     let mut r = req.call().map_err(|e| e.to_string())?;
+    revisar_sala_espera(&r)?;
     let status = r.status().as_u16();
     let headers = r
         .headers()
@@ -344,5 +381,48 @@ impl Cliente {
             e.glosa = valor(&resp, "glosa");
         }
         Ok(e)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    #[test]
+    fn reconoce_la_sala_de_espera() {
+        for u in [
+            "https://salaespera.sii.cl/?c=sii&e=consultaterceros&t=https%3A%2F%2Fwww2.sii.cl%2Fstc%2Fnoauthz&cid=es-CL",
+            "HTTPS://SalaEspera.SII.cl",
+            "//salaespera.sii.cl/?c=sii",
+            "https://sii.queue-it.net/?c=sii&e=renta",
+            "https://salaespera.sii.cl:443/x",
+        ] {
+            assert!(es_sala_espera(u), "{u}");
+        }
+        for u in [
+            "https://www2.sii.cl/stc/noauthz?t=salaespera.sii.cl",
+            "https://misiir.sii.cl/cgi_misii/siihome.cgi",
+            "/salaespera.sii.cl",
+            "https://notqueue-it.net/",
+            "",
+        ] {
+            assert!(!es_sala_espera(u), "{u}");
+        }
+    }
+
+    #[test]
+    fn una_redireccion_a_la_fila_es_error_claro() {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let dir = l.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut s, _) = l.accept().unwrap();
+            let mut b = [0u8; 2048];
+            let _ = s.read(&mut b);
+            let _ = s.write_all(b"HTTP/1.1 302 Found\r\nLocation: https://salaespera.sii.cl/?c=sii&e=autenticacionmisii\r\nContent-Length: 0\r\n\r\n");
+        });
+        let ag = agente(Duration::from_secs(5), false);
+        let r = ejecutar_get(ag.get(format!("http://{dir}/cgi_misii/siihome.cgi")));
+        assert_eq!(r.err().as_deref(), Some(MENSAJE_SALA_ESPERA));
     }
 }

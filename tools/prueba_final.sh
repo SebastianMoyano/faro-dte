@@ -60,6 +60,9 @@ echo "== 6. contrato dorado (dos motores, copia de la base)"
 puerto_libre() { "$PY" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 contrato() { # contrato <binario del motor portado>  (Go o Rust: el mismo contrato contra Python)
   local BIN="${1:-nucleo/bin/nucleo-servidor}"
+  # fuera el -wal/-shm de la corrida anterior (Go antes que Rust): con una base nueva encima,
+  # SQLite los mezclaba y respondía "database disk image is malformed"
+  rm -rf "$TMP"/db.sqlite* "$TMP/storage"
   cp dte_database.db "$TMP/db.sqlite" && mkdir -p "$TMP/storage"
   local K; K="$(openssl rand -hex 16)"
   # puertos libres, no fijos: un servidor ajeno en el puerto de siempre hacía fallar el gate con 404 en todo
@@ -72,6 +75,8 @@ contrato() { # contrato <binario del motor portado>  (Go o Rust: el mismo contra
   APP_SHELL_KEY=$K "$PY" tools/contrato_api.py --python "http://127.0.0.1:$PPY" --go "http://127.0.0.1:$PGO" --escenario todos $SIN_RED
   local rc=$?
   kill "$(cat "$TMP/py.pid")" "$(cat "$TMP/go.pid")" 2>/dev/null; rm -f "$TMP"/*.pid
+  # si falla, los logs de los dos servidores quedan junto al del gate (el $TMP se borra al salir)
+  [ $rc -eq 0 ] || { cp "$TMP/py.log" /tmp/prueba_final_contrato_py.log; cp "$TMP/go.log" /tmp/prueba_final_contrato_motor.log; }
   return $rc
 }
 gate contrato contrato

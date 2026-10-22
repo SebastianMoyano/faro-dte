@@ -33,6 +33,7 @@ from datetime import datetime
 import httpx
 from lxml import etree
 
+from core import sala_espera
 from core.caf import ManejadorCAF
 from core.config import settings
 from core.crypto import CertificadoDigital, canonicalizar_elemento
@@ -120,7 +121,7 @@ class ClienteSOAP:
             "Content-Type": "text/xml; charset=UTF-8",
             "SOAPAction": "",
         }
-        with httpx.Client(timeout=self.timeout, verify=True) as client:
+        with httpx.Client(timeout=self.timeout, verify=True, event_hooks=sala_espera.HOOKS) as client:
             resp = client.post(url, content=soap_body.encode("utf-8"), headers=headers)
             if resp.status_code == 302:
                 raise RuntimeError(

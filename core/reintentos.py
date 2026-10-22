@@ -22,6 +22,8 @@ import time
 
 import httpx
 
+from core.sala_espera import verificar_respuesta
+
 logger = logging.getLogger("dte.http")
 
 # Fallos que vale la pena reintentar: rate-limit + 5xx de saturación.
@@ -36,7 +38,10 @@ class ClienteReintentos(httpx.Client):
         self._max = max(0, max_reintentos)
         self._base = backoff_base
         self._tope = backoff_tope
-        super().__init__(*args, **kwargs)
+        # Toda respuesta pasa por la detección de la sala de espera del SII (core/sala_espera.py).
+        hooks = dict(kwargs.pop("event_hooks", None) or {})
+        hooks["response"] = [verificar_respuesta, *hooks.get("response", [])]
+        super().__init__(*args, event_hooks=hooks, **kwargs)
 
     def _espera(self, intento: int, retry_after: str | None) -> float:
         """Segundos a esperar antes del siguiente intento (0-based)."""

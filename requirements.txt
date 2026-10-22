@@ -5,16 +5,16 @@ pydantic>=2.7.0
 pydantic-settings>=2.3.0
 lxml>=5.2.0
 signxml>=3.2.0
-cryptography>=42.0.0
+cryptography>=50.0.0
 httpx>=0.27.0
-python-jose[cryptography]>=3.3.0
+pyjwt>=2.15.0
 reportlab>=4.2.0
 pdf417gen>=0.7.0
 jinja2>=3.1.4
 aiofiles>=23.2.0
 passlib[bcrypt]>=1.7.4
-python-jose[cryptography]>=3.3.0
-mcp>=1.2.0
+# mcp 2.x cambia la API; quedarse en 1.x hasta migrar mcp_server.py a propósito.
+mcp>=1.30.0,<2
 # Base de datos de zonas horarias. En Linux/macOS `zoneinfo` usa la del sistema, pero
 # Windows NO trae ninguna: sin esto, el programador del RVD (que fija el día en la hora de
 # Chile, no la del servidor) falla al arrancar allí.
@@ -31,4 +31,10 @@ tzdata>=2024.1
 brotli>=1.1.0
 zstandard>=0.22.0
 # Canal MIPYME: leer el TOTAL registrado desde el PDF del SII (guardarraíl de la NC de anulación).
-pypdf>=4.0.0
+pypdf>=6.21.1
+
+# Pisos de seguridad para dependencias indirectas (avisos de seguridad, 2026-10-22).
+# No hay lockfile: estos mínimos evitan que una instalación quede en una versión vulnerable.
+pillow>=13.0.0
+anyio>=4.14.2
+certifi>=2026.10.19

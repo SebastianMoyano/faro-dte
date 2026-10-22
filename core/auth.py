@@ -12,7 +12,8 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError
 from passlib.context import CryptContext
 
 from core.config import settings
@@ -69,7 +70,7 @@ def decodificar_token(token: str) -> Optional[dict]:
             algorithms=[settings.jwt_algorithm],
         )
         return payload
-    except JWTError:
+    except PyJWTError:
         return None
 
 

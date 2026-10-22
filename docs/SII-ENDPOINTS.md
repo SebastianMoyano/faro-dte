@@ -91,4 +91,50 @@ Un cliente fino `core/sii_sdi.py` por `httpx` que arme el sobre `metaData/data` 
 sesión por clave (molde de `core/sii_mipyme.py` + `core/rcv.py`). Encima, helpers por módulo.
 **No está hecho**: solo se abre cuando haya un trámite concreto que valga la pena automatizar.
 
+## 5. Sala de espera (Queue-it) — `salaespera.sii.cl`
+
+El SII pone una **fila virtual** delante de varios servicios. Ejemplo:
+`https://salaespera.sii.cl/?c=sii&e=consultaterceros&t=https%3A%2F%2Fwww2.sii.cl%2Fstc%2Fnoauthz&cid=es-CL`
+→ `c` = cliente Queue-it (`sii`), `e` = la fila (evento), `t` = adónde vuelve al salir de la fila.
+
+**Cómo funciona hoy (observado 2026-10-19).** La integración es **del lado del navegador**: las
+páginas cargan `static.queue-it.net/script/queueconfigloader.min.js` (`data-queueit-c='sii'`), que
+baja `https://assets.queue-it.net/sii/integrationconfig/javascript/queueclientConfig.js` y, si la
+URL de la página calza con un disparador, manda al navegador a `salaespera.sii.cl`. Las mismas
+URLs pedidas sin JS (curl/`httpx`) responden directo, sin 302 a la fila. Por eso **al motor por
+`httpx` no le afecta hoy**; sí afecta a todo lo que corre en un navegador (capturas con
+`tools/captura-sii`, Playwright, enlaces que la app abre para la persona).
+
+**Filas configuradas** (`eventId` → disparador "URL contiene"; lista viva en el JS de arriba):
+
+| fila | URL que la dispara | ¿la toca el motor? |
+|---|---|---|
+| `autenticacionmisii` | `misiir.sii.cl/cgi_misii/siihome.cg` | **sí** (login por clave, `sii_portal`/`sii_mipyme`); hoy sin efecto en `httpx` |
+| `feregcompraventa` / `certferegcompraventa` | `www4.sii.cl` / `www4c.sii.cl` `/consdcvinternetui/#/index` | RCV usa `…/services/data/facadeService/`, no la página |
+| `declaracionivaf29` | `www4.sii.cl/propuestaf29ui/index.html#/default` | F29 (envío GWT-RPC pendiente) |
+| `consultaterceros` | `www2.sii.cl/stc/noauthz` | no (situación tributaria de terceros) |
+| `consultasesiones` / `certconsultasesiones` | `/RTCConsultaCesionesHtml.cgi` | no (cesiones) |
+| `rentaingreso`, `rentaingresow`, `renta` | `navegacionf22/`, `consultaestado/`, `consultaestadof22ui` | no (F22) |
+| `iniciodeactividades`, `autenticabifurcacion`, `obtenerclavetributia`, `recuperarclavetrib` | `www2.sii.cl/inicio-de-actividades/`, `/bifurcacion/`, `admin-cntr/noauthz/…` | no |
+| `ctributariaregular`, `ctribpersonalizada` | `carpetatributaria/generarcte…` | no |
+| otras | bienes raíces (`vica/Menu/…`), F24, F50, giros, mapas, `gestortramitesui`, `sctiInternet`, `bcm2`, clase media, `sispad` | no |
+
+**Reglas para el código y la app:**
+- Si alguna vez una respuesta del SII termina en `salaespera.sii.cl` o `*.queue-it.net` (porque el
+  SII pase a una integración del lado del servidor), **no es un error de credenciales ni de
+  parseo**: es "el SII tiene fila, intenta en unos minutos". Nunca seguir parseando el HTML de la
+  fila (mismo patrón que `ayudas/900.html`).
+- **Ya está hecho en los tres motores** (2026-10-19), mirando el host de cada salto y del `Location`:
+  Python `core/sala_espera.py` (hook de `httpx`; `ClienteReintentos` lo trae, y lo usan además
+  `sii_mipyme`, `rcv` y `solicitar_caf_sii`), Go `nucleo/salaespera` (`Transporte` en todos los
+  `http.Client` hacia el SII), Rust `es_sala_espera` en `nucleo-rs/src/sii/http.rs` (dentro de
+  `ejecutar`/`ejecutar_get`, por donde pasa todo). La API responde **502 `sii_comunicacion`** con el
+  mensaje fijo de la fila, sin prefijos (`limpiar` / `salaespera.Limpiar` / `errores.rs`), igual en
+  los tres. Pruebas: `test_robustez.py` [5b], `go test ./salaespera`, `cargo test sii::http errores`.
+  Un código cliente nuevo hacia el SII **tiene que pasar por esos puntos**.
+- No reintentar en loop contra la fila: la cookie `Queue-it-<c>___<e>` y `Queue-it-visitorsession`
+  son las que dan el paso; un cliente sin JS no avanza en la fila.
+- En la app, los enlaces al portal pueden caer en la fila: decirle a la persona que espere ahí,
+  no que algo falló.
+
 [`modulo RCV`]: ../core/rcv.py

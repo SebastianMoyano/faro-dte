@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"dtechile/nucleo/firma"
+	"dtechile/nucleo/salaespera"
 )
 
 // ClienteBoleta es core/sii_boleta.py::ClienteBoletaSII: las boletas (39/41) NO comparten
@@ -69,7 +70,7 @@ func NuevoBoleta(ambiente string, cert *firma.Certificado) (*ClienteBoleta, erro
 	if _, ok := urlsBoleta[ambiente]; !ok {
 		return nil, fmt.Errorf("ambiente desconocido: %q", ambiente)
 	}
-	return &ClienteBoleta{Ambiente: ambiente, Cert: cert, HTTP: &http.Client{Timeout: 60 * time.Second}}, nil
+	return &ClienteBoleta{Ambiente: ambiente, Cert: cert, HTTP: &http.Client{Transport: salaespera.Transporte(nil), Timeout: 60 * time.Second}}, nil
 }
 
 // FirmarSemillaBoleta es ClienteBoletaSII._firmar_semilla: el mismo <getToken> firmado del flujo

@@ -341,6 +341,33 @@ async def eliminar_negocio(
     return {"eliminado": True, "id": negocio_id}
 
 
+@router.get("/negocios/{negocio_id}/movimientos")
+async def movimientos_negocio(
+    negocio_id: int,
+    periodos: str = Query("", description="Meses YYYYMM separados por coma (máx. 3); vacío = este mes y el anterior"),
+    limite: int = Query(50, ge=1, le=500),
+    usuario: dict = Depends(requerir_autenticacion),
+) -> dict:
+    """Últimos movimientos del negocio tal como los tiene el SII (RCV de PRODUCCIÓN, compras y
+    ventas), bajados en el momento con la sesión del certificado del negocio. Solo lectura."""
+    from core.sii_portal import BASE_PRODUCCION, PortalSII
+    from core import rcv as rcv_mod
+    lista = rcv_mod.parsear_periodos(periodos)
+    if lista is None:
+        raise ValidacionError(rcv_mod.MENSAJE_PERIODOS)
+    neg = _negocio_o_404(usuario["id"], negocio_id)
+    rcv_mod.init_rcv_db()
+    try:
+        with keystore.pem_transitorio(neg["cert_id"], usuario["id"]) as (cert_pem, key_pem):
+            portal = PortalSII(cert_pem, key_pem, base=BASE_PRODUCCION)
+            portal.autenticar()
+            cli = rcv_mod.RegistroCompraVenta(token=portal.cookies.get("TOKEN"))
+            res = rcv_mod.ultimos_movimientos(cli, neg["rut"], lista, limite)
+    except Exception as e:
+        raise SIIError(f"No se pudo bajar el RCV del SII: {e}")
+    return {"rut": neg["rut"], "razon_social": neg.get("razon_social"), **res}
+
+
 @router.get("/negocios/{negocio_id}/f29")
 async def f29_negocio(
     negocio_id: int, periodo: str = Query(..., description="Período tributario YYYYMM"),

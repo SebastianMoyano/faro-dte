@@ -790,6 +790,39 @@ function pintarMes(el, e) {
   calcMes();
 }
 
+// ---------- en el SII: los últimos movimientos tal como los tiene el SII ----------
+// Sale del registro de compras y ventas del SII, con el certificado de la empresa. Solo se pide
+// al pulsar el botón: cada consulta abre una sesión en el SII. Lo último traído queda en memoria.
+const movsSII = {};
+function pintarSII(el, e) {
+  if (e.demo) {
+    el.innerHTML = `<div class="card"><p>En la empresa de práctica no hay nada en el SII. Con tu propia empresa, aquí ves lo que el SII tiene registrado: lo que vendiste y lo que te facturaron.</p></div>`;
+    return;
+  }
+  el.innerHTML = `
+    <p class="mut">Lo que el SII tiene registrado de <b>${esc(e.razon_social || e.rut)}</b> este mes y el anterior: tus ventas y las facturas que te hicieron otros (compras). Un documento recién emitido puede tardar un rato en aparecer aquí.</p>
+    <div class="row"><button id="sii_traer">Traer del SII</button></div>
+    <div id="sii_res"></div>`;
+  const pintar = (r) => {
+    const fila = (m) => `<tr><td>${esc(fechaCorta(m.fecha_doc))}</td><td><span class="pill ${m.tipo_operacion === "VENTA" ? "p-ok" : "p-mut"}">${m.tipo_operacion === "VENTA" ? "venta" : "compra"}</span></td>
+      <td>${esc(TIPOS[m.tipo_dte] || m.tipo_dte)}</td><td>${m.folio}</td><td>${esc(m.razon_social || m.rut_contraparte || "")}</td>
+      <td class="num">${clp(m.monto_total)}</td><td>${m.estado_sii && m.estado_sii !== "REGISTRO" ? `<span class="pill p-warn">${esc(m.estado_sii.toLowerCase().replace("_", " "))}</span>` : ""}</td></tr>`;
+    const meses = r.periodos.map((p) => { const c = r.documentos[p] || {}; return `${mesLargo(p.slice(0, 4) + "-" + p.slice(4))}: ${c.ventas || 0} venta(s) y ${c.compras || 0} compra(s)`; }).join(" · ");
+    $("sii_res").innerHTML = r.sin_datos
+      ? `<div class="vacio">${icono("vacio")}El SII no tiene movimientos de esta empresa en estos meses.</div>`
+      : `<p class="mut">${esc(meses)}.${r.total > r.movimientos.length ? ` Se muestran los ${r.movimientos.length} más recientes.` : ""}</p>
+         <div class="card"><div class="tablewrap"><table><tr><th>Fecha</th><th></th><th>Documento</th><th>N°</th><th>De / para</th><th class="num">Total</th><th></th></tr>${r.movimientos.map(fila).join("")}</table></div></div>`;
+  };
+  $("sii_traer").onclick = async () => {
+    const b = $("sii_traer");
+    b.disabled = true; b.textContent = "Consultando al SII…";
+    try { movsSII[e.rut] = await api("GET", `/api/v1/keystore/negocios/${e.id}/movimientos?limite=100`); pintar(movsSII[e.rut]); }
+    catch (err) { $("sii_res").innerHTML = `<div class="banner rojo">${esc(err.message)}</div>`; }
+    b.disabled = false; b.textContent = "Volver a traer del SII";
+  };
+  if (movsSII[e.rut]) { pintar(movsSII[e.rut]); $("sii_traer").textContent = "Volver a traer del SII"; }
+}
+
 // Anular por el SII engine: el portal pre-construye la NC del documento (receptor e ítems tal
 // cual), el SII la valida en seco, y solo se emite con la cadena verificada desde Go.
 window.anularSII = async (id) => {
@@ -863,13 +896,14 @@ window.anularNCSII = async (id) => {
 vistas.documentos = async (el) => {
   await cargarNegocios();
   const e = empresa();
-  const tab = param("tab") === "mes" ? "mes" : "todos";
+  const tab = ["mes", "sii"].includes(param("tab")) ? param("tab") : "todos";
   el.innerHTML = `
     <h1>Documentos</h1>
     <p class="sub">Boletas, facturas y notas de <b>${esc(e.razon_social || e.rut)}</b>${e.demo ? " (práctica)" : ", tanto las del motor como las del gratuito del SII"}.</p>
-    <div class="tabs"><a class="${tab === "todos" ? "on" : ""}" href="#documentos">Todos</a><a class="${tab === "mes" ? "on" : ""}" href="#documentos?tab=mes">Mi mes</a></div>
+    <div class="tabs"><a class="${tab === "todos" ? "on" : ""}" href="#documentos">Todos</a><a class="${tab === "mes" ? "on" : ""}" href="#documentos?tab=mes">Mi mes</a><a class="${tab === "sii" ? "on" : ""}" href="#documentos?tab=sii">En el SII</a></div>
     <div id="doc_cuerpo"></div>`;
   if (tab === "mes") { pintarMes($("doc_cuerpo"), e); return; }
+  if (tab === "sii") { pintarSII($("doc_cuerpo"), e); return; }
   const r = await api("GET", "/api/v1/dte/documentos?" + new URLSearchParams({ limite: 100, rut_emisor: e.rut }));
   $("doc_cuerpo").innerHTML = `
     <div class="card">${tabla(r.documentos)}</div>

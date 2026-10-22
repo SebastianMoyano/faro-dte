@@ -46,6 +46,7 @@ from typing import Any, Optional
 
 import httpx
 
+from core import sala_espera
 from core.database import get_db
 from core.rut import separar_rut
 from core.sii import ClienteSII
@@ -451,7 +452,7 @@ class RegistroCompraVenta:
 
     def _llamar(self, url: str, payload: dict, rut_empresa: str) -> dict:
         num, dv = separar_rut(rut_empresa)
-        with httpx.Client(timeout=self.timeout, verify=True) as client:
+        with httpx.Client(timeout=self.timeout, verify=True, event_hooks=sala_espera.HOOKS) as client:
             if self._cookies:
                 headers = {"User-Agent": RCV_USER_AGENT, "Content-Type": "application/json",
                            "Accept": "application/json, text/plain, */*", "Origin": "https://www4.sii.cl",
@@ -483,6 +484,59 @@ class RegistroCompraVenta:
         ventas = self.descargar_periodo(rut_empresa, periodo, VENTA)
         n = guardar_documentos(compras + ventas)
         return {"compras": len(compras), "ventas": len(ventas), "guardados": n}
+
+
+# ---------------------------------------------------------------------------
+# Últimos movimientos: lo que el SII tiene registrado del negocio, directo del RCV
+# ---------------------------------------------------------------------------
+MAX_PERIODOS_MOVIMIENTOS = 3
+MENSAJE_PERIODOS = ("periodos debe ser una lista de meses YYYYMM separados por coma "
+                    f"(máximo {MAX_PERIODOS_MOVIMIENTOS}).")
+CAMPOS_MOVIMIENTO = ("tipo_operacion", "periodo", "tipo_dte", "folio", "fecha_doc", "rut_contraparte",
+                     "razon_social", "monto_exento", "monto_neto", "monto_iva", "monto_total", "estado_sii")
+
+
+def periodos_por_defecto(hoy: Optional[date] = None) -> list[str]:
+    """El mes en curso y el anterior (hora local), del más nuevo al más viejo."""
+    hoy = hoy or date.today()
+    anterior = (hoy.year - 1, 12) if hoy.month == 1 else (hoy.year, hoy.month - 1)
+    return [f"{hoy.year:04d}{hoy.month:02d}", f"{anterior[0]:04d}{anterior[1]:02d}"]
+
+
+def parsear_periodos(texto: str) -> Optional[list[str]]:
+    """'202610,2026-09' → ['202610', '202609']; None si alguno no es un mes válido o son
+    demasiados. Vacío → los de `periodos_por_defecto`. Sin repetidos, en el orden pedido."""
+    partes = [p.strip().replace("-", "") for p in (texto or "").split(",") if p.strip()]
+    if not partes:
+        return periodos_por_defecto()
+    out: list[str] = []
+    for p in partes:
+        if len(p) != 6 or not p.isdigit() or not 1 <= int(p[4:]) <= 12:
+            return None
+        if p not in out:
+            out.append(p)
+    return out if len(out) <= MAX_PERIODOS_MOVIMIENTOS else None
+
+
+def ultimos_movimientos(cli: "RegistroCompraVenta", rut_empresa: str, periodos: list[str],
+                        limite: int) -> dict[str, Any]:
+    """Baja COMPRAS y VENTAS de cada período desde el SII, las persiste (como el F29) y devuelve
+    los movimientos del más nuevo al más viejo: fecha del documento, período, operación, tipo y
+    folio, todo descendente. `codRespuesta` 3 (período sin registro) no es error: cuenta 0."""
+    docs: list[DocumentoRCV] = []
+    conteos: dict[str, dict[str, int]] = {}
+    for periodo in periodos:
+        compras = cli.descargar_periodo(rut_empresa, periodo, COMPRA)
+        ventas = cli.descargar_periodo(rut_empresa, periodo, VENTA)
+        guardar_documentos(compras + ventas)
+        conteos[periodo] = {"compras": len(compras), "ventas": len(ventas)}
+        docs += compras + ventas
+    docs.sort(key=lambda d: (d.fecha_doc or "", d.periodo, d.tipo_operacion, int(d.tipo_dte), int(d.folio)),
+              reverse=True)
+    return {
+        "periodos": periodos, "documentos": conteos, "total": len(docs), "sin_datos": not docs,
+        "movimientos": [{k: getattr(d, k) for k in CAMPOS_MOVIMIENTO} for d in docs[:limite]],
+    }
 
 
 def cargar_desde_json(

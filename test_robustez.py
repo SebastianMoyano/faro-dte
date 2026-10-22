@@ -177,6 +177,64 @@ def test_reintentos() -> None:
     _check(ClienteReintentos(backoff_tope=8.0)._espera(0, "3") == 3.0, "respeta Retry-After (3s)")
 
 
+def test_sala_espera() -> None:
+    print("\n[5b] Sala de espera (Queue-it) del SII")
+    import httpx
+    from core.errors import SIIError
+    from core.reintentos import ClienteReintentos
+    from core.sala_espera import MENSAJE, HOOKS, es_sala_espera, limpiar
+
+    _check(all(es_sala_espera(u) for u in (
+        "https://salaespera.sii.cl/?c=sii&e=consultaterceros&t=https%3A%2F%2Fwww2.sii.cl%2Fstc%2Fnoauthz&cid=es-CL",
+        "HTTPS://SalaEspera.SII.cl", "//salaespera.sii.cl/?c=sii", "https://sii.queue-it.net/?c=sii&e=renta",
+        "https://salaespera.sii.cl:443/x")), "reconoce salaespera.sii.cl y *.queue-it.net")
+    _check(not any(es_sala_espera(u) for u in (
+        "https://www2.sii.cl/stc/noauthz?t=salaespera.sii.cl", "https://misiir.sii.cl/cgi_misii/siihome.cgi",
+        "/salaespera.sii.cl", "https://notqueue-it.net/", "")), "no confunde URLs normales del SII")
+
+    def h(req):
+        if req.url.host == "salaespera.sii.cl":
+            return httpx.Response(200, text="<title>SII-SalaEspera</title>")
+        return httpx.Response(302, headers={"Location": "https://salaespera.sii.cl/?c=sii&e=autenticacionmisii"})
+
+    for nombre, cli in (
+        ("ClienteReintentos siguiendo el 302", ClienteReintentos(transport=httpx.MockTransport(h), follow_redirects=True)),
+        ("httpx sin seguir el 302 (mipyme)", httpx.Client(transport=httpx.MockTransport(h), event_hooks=HOOKS)),
+    ):
+        try:
+            cli.get("https://misiir.sii.cl/cgi_misii/siihome.cgi")
+            _check(False, f"{nombre}: debió cortar")
+        except SIIError as e:
+            _check(e.mensaje == MENSAJE and e.http_status == 502, f"{nombre}: SIIError con el mensaje de la fila")
+    _check(limpiar(f"No se pudo consultar el SII: {MENSAJE}") == MENSAJE, "limpiar quita prefijos")
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.errors import registrar_manejo_errores
+    app = FastAPI()
+    registrar_manejo_errores(app)
+
+    @app.get("/fila")
+    def _fila():
+        raise SIIError(f"No se pudo consultar el SII: {MENSAJE}")
+
+    r = TestClient(app).get("/fila")
+    _check(r.status_code == 502 and r.json()["error"] == {**r.json()["error"], "codigo": "sii_comunicacion", "mensaje": MENSAJE},
+           "API: 502 sii_comunicacion con el mensaje de la fila, sin prefijos")
+
+
+def test_movimientos_periodos() -> None:
+    print("\n[5c] Movimientos del SII: períodos")
+    from datetime import date
+    from core.rcv import parsear_periodos, periodos_por_defecto
+    _check(periodos_por_defecto(date(2026, 10, 31)) == ["202610", "202609"], "este mes y el anterior")
+    _check(periodos_por_defecto(date(2026, 1, 5)) == ["202601", "202512"], "enero → diciembre del año anterior")
+    _check(parsear_periodos("202610, 2026-09,202610") == ["202610", "202609"], "acepta YYYY-MM y saca repetidos")
+    _check(len(parsear_periodos("")) == 2, "vacío → dos meses")
+    _check(all(parsear_periodos(m) is None for m in ("202613", "2026", "abcdef", "202600", "202601,202602,202603,202604")),
+           "rechaza meses inválidos y más de 3")
+
+
 def test_seguridad() -> None:
     print("\n[6] Hardening / configuración")
     import os
@@ -342,6 +400,8 @@ def main_() -> int:
     test_mcp()
     test_mcp_auth()
     test_reintentos()
+    test_sala_espera()
+    test_movimientos_periodos()
     test_seguridad()
     test_seguridad_recursos()
     test_diagnostico()

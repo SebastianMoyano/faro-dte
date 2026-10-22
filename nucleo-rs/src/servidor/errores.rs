@@ -106,7 +106,14 @@ impl ErrorHTTP {
     pub fn respuesta(&self, request_id: &str) -> Respuesta {
         let mut e = serde_json::Map::new();
         e.insert("codigo".into(), Value::String(self.codigo.clone()));
-        e.insert("mensaje".into(), Value::String(self.mensaje.clone()));
+        // La sala de espera del SII llega envuelta en prefijos ("No se pudo consultar el SII: …"):
+        // se responde solo su mensaje, igual que `salaespera.Limpiar` en Go y `api/errors.py`.
+        let mensaje = if self.mensaje.contains(crate::sii::http::MENSAJE_SALA_ESPERA) {
+            crate::sii::http::MENSAJE_SALA_ESPERA.to_string()
+        } else {
+            self.mensaje.clone()
+        };
+        e.insert("mensaje".into(), Value::String(mensaje));
         if let Some(d) = &self.detalle {
             e.insert("detalle".into(), d.clone());
         }
@@ -148,4 +155,18 @@ pub fn json(status: u16, v: &Value) -> Respuesta {
 
 pub fn ok(v: Value) -> Res {
     Ok(json(200, &v))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn la_sala_de_espera_se_responde_sin_prefijos() {
+        let m = crate::sii::http::MENSAJE_SALA_ESPERA;
+        let r = ErrorHTTP::sii_comunicacion(format!("No se pudo consultar el SII: {m}")).respuesta("");
+        let v: Value = serde_json::from_slice(&r.cuerpo).unwrap();
+        assert_eq!(v["error"]["mensaje"], m);
+        assert_eq!(v["error"]["codigo"], "sii_comunicacion");
+    }
 }

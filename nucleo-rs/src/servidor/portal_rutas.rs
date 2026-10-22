@@ -42,6 +42,11 @@ pub fn rutas(s: &mut Servidor) {
         super::f29::f29_negocio,
     );
     s.ruta(
+        "GET /api/v1/keystore/negocios/{id}/movimientos",
+        Prot::Protegida,
+        super::f29::movimientos_negocio,
+    );
+    s.ruta(
         "GET /api/v1/onboarding/diagnostico",
         Prot::Protegida,
         onboarding_diagnostico,

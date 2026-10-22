@@ -24,6 +24,7 @@ import (
 
 	"dtechile/nucleo/c14n"
 	"dtechile/nucleo/firma"
+	"dtechile/nucleo/salaespera"
 )
 
 const (
@@ -48,7 +49,7 @@ func Nuevo(ambiente string, cert *firma.Certificado) (*Cliente, error) {
 	if _, ok := hosts[ambiente]; !ok {
 		return nil, fmt.Errorf("ambiente desconocido %q (certificacion | produccion)", ambiente)
 	}
-	return &Cliente{Ambiente: ambiente, Cert: cert, HTTP: &http.Client{Timeout: 90 * time.Second}}, nil
+	return &Cliente{Ambiente: ambiente, Cert: cert, HTTP: &http.Client{Transport: salaespera.Transporte(nil), Timeout: 90 * time.Second}}, nil
 }
 
 func (c *Cliente) url(ruta string) string { return hosts[c.Ambiente] + ruta }

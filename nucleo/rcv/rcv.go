@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"dtechile/nucleo/salaespera"
 )
 
 const (
@@ -403,7 +405,7 @@ type Cliente struct {
 }
 
 func Nuevo(token string, cookies map[string]string) *Cliente {
-	return &Cliente{Token: token, Cookies: cookies, HTTP: &http.Client{Timeout: 60 * time.Second}}
+	return &Cliente{Token: token, Cookies: cookies, HTTP: &http.Client{Transport: salaespera.Transporte(nil), Timeout: 60 * time.Second}}
 }
 
 func (c *Cliente) token() (string, error) {

@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"dtechile/nucleo/salaespera"
 )
 
 const (
@@ -141,7 +143,7 @@ func Nuevo(certPEM, keyPEM []byte, base string) (*Cliente, error) {
 		c.tlsCert = &cert
 		tr.TLSClientConfig.Certificates = []tls.Certificate{cert}
 	}
-	c.HTTP = &http.Client{Transport: tr, Timeout: 40 * time.Second}
+	c.HTTP = &http.Client{Transport: salaespera.Transporte(tr), Timeout: 40 * time.Second}
 	return c, nil
 }
 
@@ -366,7 +368,7 @@ func (c *Cliente) ConsultarEmpresaAutorizada(rut, base string) (*EmpresaAutoriza
 		base = c.Base
 	}
 	n, dv := SepararRut(rut)
-	publico := &Cliente{HTTP: &http.Client{Timeout: 25 * time.Second}}
+	publico := &Cliente{HTTP: &http.Client{Transport: salaespera.Transporte(nil), Timeout: 25 * time.Second}}
 	h, err := publico.post(base+"/ee_empresa_rut", map[string]string{"CNSLT": "R", "RUT_EMP": n, "DV_EMP": dv, "ACEPTAR": "Consultar"})
 	if err != nil {
 		return nil, err

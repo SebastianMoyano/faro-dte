@@ -1,6 +1,7 @@
 //! El árbol del documento (o del XSD): nombres resueltos a (namespace, local), atributos sin
 //! los xmlns, texto concatenado, hijos y línea de inicio. Transcripción de `nucleo/xsd/arbol.go`.
 
+use crate::c14n::{resolver_referencia, valor_atributo};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::collections::BTreeMap;
@@ -185,7 +186,7 @@ pub fn parsear_arbol(raw: &[u8]) -> Result<Nodo, String> {
                 for a in e.attributes() {
                     let a = a.map_err(|e| e.to_string())?;
                     let clave = String::from_utf8_lossy(a.key.as_ref()).into_owned();
-                    let valor = a.unescape_value().map_err(|e| e.to_string())?.into_owned();
+                    let valor = valor_atributo(&a)?;
                     if clave == "xmlns" {
                         ns.insert(String::new(), valor);
                     } else if let Some(p) = clave.strip_prefix("xmlns:") {
@@ -218,7 +219,7 @@ pub fn parsear_arbol(raw: &[u8]) -> Result<Nodo, String> {
                 }
             }
             Event::Text(t) => {
-                let s = t.unescape().map_err(|e| e.to_string())?;
+                let s = t.decode().map_err(|e| e.to_string())?;
                 match pila.last_mut() {
                     Some(p) => p.texto.push_str(&s),
                     None => {
@@ -226,6 +227,13 @@ pub fn parsear_arbol(raw: &[u8]) -> Result<Nodo, String> {
                             return Err("contenido extra al final del documento".into());
                         }
                     }
+                }
+            }
+            Event::GeneralRef(r) => {
+                let s = resolver_referencia(&r)?;
+                match pila.last_mut() {
+                    Some(p) => p.texto.push_str(&s),
+                    None => return Err("contenido extra al final del documento".into()),
                 }
             }
             Event::CData(c) => {

@@ -69,7 +69,7 @@ def verificar_dependencias():
         "reportlab": "Generación de PDF",
         "pdf417gen": "Código de barras PDF417",
         "httpx": "Cliente HTTP",
-        "jose": "Tokens JWT",
+        "jwt": "Tokens JWT",
         "passlib": "Hash de contraseñas",
         "bcrypt": "Algoritmo bcrypt",
     }

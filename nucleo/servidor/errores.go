@@ -10,6 +10,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"dtechile/nucleo/salaespera"
 )
 
 type cuerpoError struct {
@@ -37,7 +39,7 @@ func responderError(w http.ResponseWriter, r *http.Request, status int, codigo, 
 		w.Header().Set("WWW-Authenticate", "Bearer")
 	}
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]any{"error": cuerpoError{Codigo: codigo, Mensaje: mensaje, Detalle: detalle, RequestID: requestID(r)}})
+	json.NewEncoder(w).Encode(map[string]any{"error": cuerpoError{Codigo: codigo, Mensaje: salaespera.Limpiar(mensaje), Detalle: detalle, RequestID: requestID(r)}})
 }
 
 // responderJSON escribe un cuerpo JSON (sin escapar HTML, como FastAPI).

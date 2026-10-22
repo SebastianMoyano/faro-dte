@@ -22,6 +22,7 @@ func (s *Servidor) rutasPortal(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/keystore/negocios/{id}/estado", s.protegido(s.estadoNegocio))
 	mux.HandleFunc("GET /api/v1/keystore/negocios/{id}/timbraje", s.protegido(s.timbrajeNegocio))
 	mux.HandleFunc("GET /api/v1/keystore/negocios/{id}/f29", s.protegido(s.f29Negocio))
+	mux.HandleFunc("GET /api/v1/keystore/negocios/{id}/movimientos", s.protegido(s.movimientosNegocio))
 	mux.HandleFunc("GET /api/v1/onboarding/diagnostico", s.protegido(s.onboardingDiagnostico))
 	mux.HandleFunc("GET /api/v1/onboarding/cartera", s.protegido(s.onboardingCartera))
 }

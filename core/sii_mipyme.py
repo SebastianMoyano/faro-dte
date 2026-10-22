@@ -65,6 +65,7 @@ from urllib.parse import urlencode
 
 import httpx
 
+from core import sala_espera
 from core.errors import AutenticacionError, SIIError, SIIRechazoError, ValidacionError
 from core.rut import formatear_rut, separar_rut, validar_rut
 
@@ -766,7 +767,8 @@ class ClienteMipyme:
         self._clave_trib = clave_tributaria
         self._clave_cert = clave_certificado
         # httpx.Client a secas, NO ClienteReintentos: un reintento de GenXMLFirma gasta 2 folios.
-        self._s = httpx.Client(timeout=timeout, follow_redirects=False, headers=_headers_base())
+        self._s = httpx.Client(timeout=timeout, follow_redirects=False, headers=_headers_base(),
+                               event_hooks=sala_espera.HOOKS)
         self.empresa: Optional[str] = None
         self._autenticado = False
         self._menu_html = ""   # menú de la empresa (respuesta de mipeSelEmpresa): de aquí salen los enlaces

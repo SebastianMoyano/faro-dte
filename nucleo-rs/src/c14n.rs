@@ -3,12 +3,35 @@
 //! `nucleo/c14n` (Go): el subárbol se canonicaliza como documento independiente con los
 //! namespaces heredados de sus ancestros declarados en su ápice.
 
-use quick_xml::events::Event;
+use quick_xml::escape::{resolve_predefined_entity, unescape};
+use quick_xml::events::attributes::Attribute;
+use quick_xml::events::{BytesRef, Event};
 use quick_xml::Reader;
 use std::collections::BTreeMap;
 
 /// prefijo ("" = default) → URI
 pub type Alcance = BTreeMap<String, String>;
+
+/// Valor de un atributo con las referencias resueltas, SIN normalizar espacios: lo mismo
+/// que hacía `unescape_value` en quick-xml 0.37 (en 0.41 ese método también cambia
+/// tabulaciones y saltos por espacios, y eso movería bytes de la firma).
+pub(crate) fn valor_atributo(a: &Attribute) -> Result<String, String> {
+    let crudo = std::str::from_utf8(&a.value).map_err(|e| e.to_string())?;
+    Ok(unescape(crudo).map_err(|e| e.to_string())?.into_owned())
+}
+
+/// Desde quick-xml 0.38 el texto llega sin desescapar y cada `&...;` es un evento aparte.
+/// Solo se aceptan referencias numéricas y las 5 predefinidas: una entidad declarada en un
+/// DOCTYPE no se resuelve (ni XXE ni "billion laughs"), igual que antes.
+pub(crate) fn resolver_referencia(r: &BytesRef) -> Result<String, String> {
+    if let Some(c) = r.resolve_char_ref().map_err(|e| e.to_string())? {
+        return Ok(c.to_string());
+    }
+    let nombre = r.decode().map_err(|e| e.to_string())?;
+    resolve_predefined_entity(&nombre)
+        .map(str::to_string)
+        .ok_or_else(|| format!("entidad desconocida: &{nombre};"))
+}
 
 /// `subarbol`: XML del subárbol (UTF-8, sin declaración). `heredados`: namespaces de los
 /// ancestros (como los renderiza lxml en el ápice al serializar el subárbol). Devuelve los
@@ -34,10 +57,7 @@ pub fn canonicalizar(subarbol: &str, heredados: &Alcance) -> Result<Vec<u8>, Str
                 for a in e.attributes() {
                     let a = a.map_err(|e| format!("atributo: {e}"))?;
                     let clave = String::from_utf8_lossy(a.key.as_ref()).into_owned();
-                    let valor = a
-                        .unescape_value()
-                        .map_err(|e| format!("atributo: {e}"))?
-                        .into_owned();
+                    let valor = valor_atributo(&a).map_err(|e| format!("atributo: {e}"))?;
                     if clave == "xmlns" {
                         declarados.insert(String::new(), valor);
                     } else if let Some(p) = clave.strip_prefix("xmlns:") {
@@ -91,7 +111,11 @@ pub fn canonicalizar(subarbol: &str, heredados: &Alcance) -> Result<Vec<u8>, Str
                 profundidad = profundidad.saturating_sub(1);
             }
             Event::Text(t) => {
-                let texto = t.unescape().map_err(|e| format!("texto: {e}"))?;
+                let texto = t.decode().map_err(|e| format!("texto: {e}"))?;
+                out.push_str(&esc_texto(&texto));
+            }
+            Event::GeneralRef(r) => {
+                let texto = resolver_referencia(&r).map_err(|e| format!("texto: {e}"))?;
                 out.push_str(&esc_texto(&texto));
             }
             Event::CData(c) => {
@@ -156,6 +180,20 @@ mod tests {
             String::from_utf8(c).unwrap(),
             r#"<Documento xmlns="http://www.sii.cl/SiiDte" ID="T39F1"><A></A><B a="1" b="2">x &amp; y</B></Documento>"#
         );
+    }
+
+    #[test]
+    fn referencias_se_resuelven_y_entidades_ajenas_fallan() {
+        let c = canonicalizar(
+            "<A t=\"x &lt; y&#9;z\">&#233;&#xE9;&amp;&lt;&gt;&quot;&apos;</A>",
+            &Alcance::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            String::from_utf8(c).unwrap(),
+            "<A t=\"x &lt; y&#x9;z\">éé&amp;&lt;&gt;\"'</A>"
+        );
+        assert!(canonicalizar("<A>&xxe;</A>", &Alcance::new()).is_err());
     }
 
     #[test]

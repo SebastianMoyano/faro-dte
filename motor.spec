@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 hidden = (
     collect_submodules("uvicorn") + collect_submodules("passlib.handlers")
     + collect_submodules("api.routes") + collect_submodules("core")
-    + ["pydantic_settings", "jose", "multipart", "signxml", "pdf417gen", "brotli", "zstandard", "pypdf"]
+    + ["pydantic_settings", "jwt", "multipart", "signxml", "pdf417gen", "brotli", "zstandard", "pypdf"]
 )
 datas = [
     ("static", "static"),

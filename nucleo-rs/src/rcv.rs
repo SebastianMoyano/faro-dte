@@ -1023,6 +1023,109 @@ impl Cliente {
     }
 }
 
+// ---------------------------------------------------------------- últimos movimientos
+
+/// Lo que el SII tiene registrado del negocio, directo del RCV. Mismo comportamiento que
+/// `periodos_por_defecto`/`parsear_periodos`/`ultimos_movimientos` de core/rcv.py.
+pub const MAX_PERIODOS_MOVIMIENTOS: usize = 3;
+
+pub fn mensaje_periodos() -> String {
+    format!(
+        "periodos debe ser una lista de meses YYYYMM separados por coma (máximo {MAX_PERIODOS_MOVIMIENTOS})."
+    )
+}
+
+/// El mes en curso y el anterior (`hoy` = "YYYY-MM-DD…" local), del más nuevo al más viejo.
+pub fn periodos_por_defecto(hoy: &str) -> Vec<String> {
+    let a: i64 = hoy[..4].parse().unwrap_or(2000);
+    let m: i64 = hoy[5..7].parse().unwrap_or(1);
+    let (aa, ma) = if m == 1 { (a - 1, 12) } else { (a, m - 1) };
+    vec![format!("{a:04}{m:02}"), format!("{aa:04}{ma:02}")]
+}
+
+/// "202610,2026-09" → ["202610", "202609"]; None si alguno no es un mes válido o son demasiados.
+/// Vacío → `periodos_por_defecto` de hoy. Sin repetidos, en el orden pedido.
+pub fn parsear_periodos(texto: &str) -> Option<Vec<String>> {
+    let partes: Vec<String> = texto
+        .split(',')
+        .map(|p| p.trim().replace('-', ""))
+        .filter(|p| !p.is_empty())
+        .collect();
+    if partes.is_empty() {
+        return Some(periodos_por_defecto(&almacen::ahora_iso()));
+    }
+    let mut out: Vec<String> = Vec::new();
+    for p in partes {
+        let valido = p.len() == 6
+            && p.bytes().all(|c| c.is_ascii_digit())
+            && (1..=12).contains(&p[4..].parse::<u32>().unwrap_or(0));
+        if !valido {
+            return None;
+        }
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    }
+    (out.len() <= MAX_PERIODOS_MOVIMIENTOS).then_some(out)
+}
+
+impl Cliente {
+    /// Baja COMPRAS y VENTAS de cada período desde el SII, las persiste (como el F29) y devuelve
+    /// los movimientos del más nuevo al más viejo: fecha del documento, período, operación, tipo
+    /// y folio, todo descendente.
+    pub fn ultimos_movimientos(
+        &self,
+        al: &Almacen,
+        rut_empresa: &str,
+        periodos: &[String],
+        limite: usize,
+    ) -> Result<Value, String> {
+        let mut docs: Vec<Documento> = Vec::new();
+        let mut conteos = Map::new();
+        for periodo in periodos {
+            let compras = self.descargar_periodo(rut_empresa, periodo, COMPRA)?;
+            let ventas = self.descargar_periodo(rut_empresa, periodo, VENTA)?;
+            conteos.insert(
+                periodo.clone(),
+                json!({"compras": compras.len(), "ventas": ventas.len()}),
+            );
+            let mut del = compras;
+            del.extend(ventas);
+            guardar_documentos(al, &del).map_err(|e| e.to_string())?;
+            docs.extend(del);
+        }
+        docs.sort_by(|a, b| {
+            let clave = |d: &Documento| {
+                (
+                    d.fecha_doc.clone().unwrap_or_default(),
+                    d.periodo.clone(),
+                    d.tipo_operacion.clone(),
+                    d.tipo_dte,
+                    d.folio,
+                )
+            };
+            clave(b).cmp(&clave(a))
+        });
+        let movs: Vec<Value> = docs
+            .iter()
+            .take(limite)
+            .map(|d| {
+                json!({
+                    "tipo_operacion": d.tipo_operacion, "periodo": d.periodo, "tipo_dte": d.tipo_dte,
+                    "folio": d.folio, "fecha_doc": d.fecha_doc, "rut_contraparte": d.rut_contraparte,
+                    "razon_social": d.razon_social, "monto_exento": d.monto_exento,
+                    "monto_neto": d.monto_neto, "monto_iva": d.monto_iva,
+                    "monto_total": d.monto_total, "estado_sii": d.estado_sii,
+                })
+            })
+            .collect();
+        Ok(json!({
+            "periodos": periodos, "documentos": conteos, "total": docs.len(),
+            "sin_datos": docs.is_empty(), "movimientos": movs,
+        }))
+    }
+}
+
 fn num_v(v: &Value) -> i64 {
     num(Some(v))
 }
@@ -1165,5 +1268,24 @@ mod tests {
             }
         }
         assert!(fallos.is_empty(), "{}", fallos.join("\n"));
+    }
+}
+
+#[cfg(test)]
+mod tests_movimientos {
+    use super::*;
+
+    #[test]
+    fn periodos_de_movimientos() {
+        assert_eq!(periodos_por_defecto("2026-10-19"), ["202610", "202609"]);
+        assert_eq!(periodos_por_defecto("2026-01-05T10:00"), ["202601", "202512"]);
+        assert_eq!(
+            parsear_periodos("202610, 2026-09,202610").unwrap(),
+            ["202610", "202609"]
+        );
+        assert_eq!(parsear_periodos("").unwrap().len(), 2);
+        for malo in ["202613", "2026", "abcdef", "202600", "202601,202602,202603,202604"] {
+            assert!(parsear_periodos(malo).is_none(), "{malo}");
+        }
     }
 }
