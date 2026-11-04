@@ -2,8 +2,8 @@
 # DTE Chile API - Dockerfile
 # ============================================
 # Imagen base ligera de Python
-# Parche fijado: 3.12.15 corrige CVE-2026-15308. Subirlo a mano cuando salga otro parche.
-FROM python:3.12.15-slim
+# Parche fijado: 3.12.16 (avisos de 3.12.15, oct-2026). Subirlo a mano cuando salga otro parche.
+FROM python:3.12.16-slim
 
 # Variables de entorno
 ENV PYTHONDONTWRITEBYTECODE=1 \
