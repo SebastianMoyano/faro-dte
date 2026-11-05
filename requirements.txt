@@ -1,16 +1,16 @@
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
-python-multipart>=0.0.9
+python-multipart>=0.0.31
 pydantic>=2.7.0
 pydantic-settings>=2.3.0
-lxml>=5.2.0
-signxml>=3.2.0
+lxml>=6.1.0
+signxml>=4.0.4
 cryptography>=50.0.0
 httpx>=0.27.0
 pyjwt>=2.15.0
 reportlab>=4.2.0
 pdf417gen>=0.7.0
-jinja2>=3.1.4
+jinja2>=3.1.6
 aiofiles>=23.2.0
 passlib[bcrypt]>=1.7.4
 # mcp 2.x cambia la API; quedarse en 1.x hasta migrar mcp_server.py a propósito.
@@ -28,13 +28,19 @@ tzdata>=2024.1
 
 # Canal MIPYME (core/sii_mipyme.py): el portal responde con brotli/zstd si el cliente los anuncia.
 # Sin estas libs el módulo anuncia solo gzip/deflate (funciona, pero se aleja del header de Chrome).
-brotli>=1.1.0
+brotli>=1.2.1
 zstandard>=0.22.0
 # Canal MIPYME: leer el TOTAL registrado desde el PDF del SII (guardarraíl de la NC de anulación).
-pypdf>=6.21.1
+pypdf>=6.21.4
 
 # Pisos de seguridad para dependencias indirectas (avisos de seguridad, 2026-10-22).
 # No hay lockfile: estos mínimos evitan que una instalación quede en una versión vulnerable.
 pillow>=13.0.0
 anyio>=4.14.2
 certifi>=2026.10.19
+
+# Pisos de seguridad 2026-11-05: los rangos >= anteriores permitían instalaciones en
+# versiones con avisos (python-multipart, lxml, signxml, jinja2, brotli, pypdf).
+# Cada piso elegido queda fuera de todo aviso conocido en OSV. lxml 5->6 y signxml 3->4
+# cruzan de major, pero el rango >= ya permitía esas ramas (pip instala la última que
+# cumple); solo se fija el mínimo seguro, sin tocar el código.
